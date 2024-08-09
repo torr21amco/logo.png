@@ -1,27 +1,90 @@
-Concepto del Juego "Astro Minero"
-1. Premisa del Juego
-Los jugadores asumen el papel de mineros espaciales que exploran planetas en busca de recursos valiosos y recompensas en forma de AMCO. A medida que avanzan, pueden mejorar sus equipos, completar tareas especiales y ganar recompensas adicionales por referir a otros jugadores.
+pragma solidity ^0.8.2;
 
-2. Elementos del Juego
-Inicio del Juego
+contract AstroMineroToken {
+    mapping(address => uint) public balances;
+    mapping(address => mapping(address => uint)) public allowance;
+    uint public totalSupply = 21000000 * 10 ** 18; // 21,000,000 tokens con 18 decimales
+    string public name = "Astro Mining Coin";
+    string public symbol = "AMCO";
+    uint public decimals = 18;
 
-Registro y Compra Inicial de Tokens: Los usuarios deben registrarse en el juego comprando una cantidad mínima de AMCO.
-Configuración de Perfil: Nombre de usuario, elección de avatar (temática espacial).
-Minería Espacial
+    address public owner;
+    address public liquidityAddress;
+    uint public feePercentage = 3; // 0.3%
 
-Acciones Principales: Los jugadores hacen "tap" para minar recursos en distintos planetas. Cada tap consume una cantidad de energía.
-Recursos y Energía: Los jugadores obtienen recursos y tokens AMCO por cada tap exitoso.
-Mejoras de Equipos: Los jugadores pueden gastar AMCO para mejorar su equipo minero, aumentando la eficiencia y las recompensas por tap.
-Tareas y Misiones
+    event Transfer(address indexed from, address indexed to, uint value);
+    event Approval(address indexed owner, address indexed spender, uint value);
 
-Misiones Diarias/Semanales: Tareas que ofrecen recompensas adicionales en AMCO.
-Eventos Especiales: Eventos temáticos que otorgan recompensas únicas y mejoras temporales.
-Sistema de Referidos
+    constructor(address _liquidityAddress) {
+        owner = msg.sender;
+        liquidityAddress = _liquidityAddress;
+        balances[owner] = totalSupply;
+    }
+    
+    function balanceOf(address owner) public view returns(uint) {
+        return balances[owner];
+    }
 
-Recompensas por Referidos: Los jugadores ganan AMCO al referir a nuevos jugadores que se registren y compren tokens.
-Bonificaciones de Referidos: Recompensas adicionales si los referidos alcanzan ciertos hitos en el juego.
-Mercado y Economía
+    function transfer(address to, uint value) public returns(bool) {
+        uint fee = (value * feePercentage) / 1000;
+        uint transferValue = value - fee;
+        
+        require(balanceOf(msg.sender) >= value, 'balance too low');
+        
+        balances[msg.sender] -= value;
+        balances[to] += transferValue;
+        balances[owner] += fee / 3;
+        distributeFee(fee / 3);
+        balances[liquidityAddress] += fee / 3;
 
-Mercado de Tokens: Los jugadores pueden comprar y vender AMCO en el mercado del juego.
-Retiro de Ganancias: Los jugadores pueden retirar sus ganancias en AMCO vendiendo tokens en el mercado.
-Sistema de Fluctuación de Precios: El valor del AMCO fluctúa basado en la oferta y la demanda dentro del juego.
+        emit Transfer(msg.sender, to, transferValue);
+        emit Transfer(msg.sender, owner, fee / 3);
+        emit Transfer(msg.sender, address(this), fee / 3);
+        emit Transfer(msg.sender, liquidityAddress, fee / 3);
+
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint value) public returns(bool) {
+        uint fee = (value * feePercentage) / 1000;
+        uint transferValue = value - fee;
+
+        require(balanceOf(from) >= value, 'balance too low');
+        require(allowance[from][msg.sender] >= value, 'allowance too low');
+
+        balances[from] -= value;
+        balances[to] += transferValue;
+        balances[owner] += fee / 3;
+        distributeFee(fee / 3);
+        balances[liquidityAddress] += fee / 3;
+
+        allowance[from][msg.sender] -= value;
+
+        emit Transfer(from, to, transferValue);
+        emit Transfer(from, owner, fee / 3);
+        emit Transfer(from, address(this), fee / 3);
+        emit Transfer(from, liquidityAddress, fee / 3);
+
+        return true;   
+    }
+
+    function approve(address spender, uint value) public returns (bool) {
+        allowance[msg.sender][spender] = value;
+        emit Approval(msg.sender, spender, value);
+        return true;   
+    }
+
+    function distributeFee(uint fee) internal {
+        uint totalSupplyMinusOwner = totalSupply - balances[owner];
+        for (uint i = 0; i < totalSupplyMinusOwner; i++) {
+            // Distribute the fee to all token holders proportionally
+            address holder = address(uint160(i));
+            if (holder != owner && balances[holder] > 0) {
+                uint holderShare = (fee * balances[holder]) / totalSupplyMinusOwner;
+                balances[holder] += holderShare;
+                emit Transfer(address(this), holder, holderShare);
+            }
+        }
+    }
+}
+
